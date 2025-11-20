@@ -8,7 +8,7 @@ something that is not easy to achieve with tools like `grep` and `less`.
 
 # Usage
 ```
-Usage: colorexp-rs [OPTIONS] [PATTERNS]...
+Usage: colorexp [OPTIONS] [PATTERNS]...
 
 Arguments:
   [PATTERNS]...  Patterns
