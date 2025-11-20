@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use regex::RegexBuilder;
 use std::io;
 use std::io::BufRead;
@@ -6,13 +6,18 @@ use std::process::exit;
 
 /// Command line multicolor regexp highlighter
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = None, disable_help_flag = true)]
 struct Args {
-    // // Do not color by changing the background color
+    // using custom help arg to be able to turn off -h, which is used by the no_highlight arg
+    /// Show help
+    #[arg(long = "help")]
+    help: bool,
+
+    // /// Do not color by changing the background color
     // #[arg(short = 'h', long)]
     // no_highlight: bool,
 
-    // Only color by changing the background color
+    /// Only color by changing the background color
     #[arg(short = 'H', long)]
     only_highlight: bool,
 
@@ -52,6 +57,11 @@ const RESET_BACKGROUND: &str = "\x1b[49m";
 
 fn main() {
     let args = Args::parse();
+
+    if args.help {
+        Args::command().print_help().unwrap();
+        exit(0);
+    }
 
     if args.patterns.len() > 1 {
         eprintln!("Only one pattern supported for now. Sorry!");
