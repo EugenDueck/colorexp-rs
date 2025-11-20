@@ -3,7 +3,7 @@
 something that is not easy to achieve with tools like `grep` and `less`.
 
 **Colorexp**
-- uses the Go regexp format, as documented [here](https://pkg.go.dev/regexp/syntax).
+- uses Rust's regex format, as documented [here](https://docs.rs/regex/latest/regex/#syntax).
 - supports overlapping matches (the color for the last pattern that matches will be used)
 
 # Usage
