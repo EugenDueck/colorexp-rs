@@ -72,7 +72,14 @@ fn main() {
         eprintln!("Only one pattern supported for now. Sorry!");
         exit(2);
     }
-    let pattern = args.patterns.first().unwrap();
+    let regexps = {
+        let mut r = args.patterns.clone();
+        // reverse order, so that the last given regex that matches takes precedence
+        r.reverse();
+        r
+    };
+
+    let pattern = regexps.first().unwrap();
     let re = RegexBuilder::new(pattern)
         .case_insensitive(args.ignore_case)
         .build()
