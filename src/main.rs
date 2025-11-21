@@ -1,4 +1,4 @@
-use clap::{CommandFactory, Parser};
+use clap::{ArgAction, ArgGroup, Parser};
 use regex::RegexBuilder;
 use std::io;
 use std::io::BufRead;
@@ -6,16 +6,26 @@ use std::process::exit;
 
 /// Command line multicolor regexp highlighter
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None, disable_help_flag = true)]
+#[command(
+    version,
+    about,
+    long_about = None,
+    disable_help_flag = true,
+    group(
+        ArgGroup::new("highlight")
+            .args(&["no_highlight", "only_highlight"])
+            .multiple(false)
+    ),
+)]
 struct Args {
     // using custom help arg to be able to turn off -h, which is used by the no_highlight arg
     /// Show help
-    #[arg(long = "help")]
-    help: bool,
+    #[arg(long = "help", action = ArgAction::Help)]
+    help: Option<bool>,
 
-    // /// Do not color by changing the background color
-    // #[arg(short = 'h', long)]
-    // no_highlight: bool,
+    /// Do not color by changing the background color
+    #[arg(short = 'h', long)]
+    no_highlight: bool,
 
     /// Only color by changing the background color
     #[arg(short = 'H', long)]
@@ -26,7 +36,7 @@ struct Args {
     ignore_case: bool,
 
     /// Patterns
-    #[arg(num_args = 1..)]
+    #[arg(required = true, num_args = 1..)]
     patterns: Vec<String>,
 }
 
@@ -58,14 +68,9 @@ const RESET_BACKGROUND: &str = "\x1b[49m";
 fn main() {
     let args = Args::parse();
 
-    if args.help {
-        Args::command().print_help().unwrap();
-        exit(0);
-    }
-
     if args.patterns.len() > 1 {
         eprintln!("Only one pattern supported for now. Sorry!");
-        exit(1);
+        exit(2);
     }
     let pattern = args.patterns.first().unwrap();
     let re = RegexBuilder::new(pattern)
@@ -74,23 +79,24 @@ fn main() {
         .unwrap();
     let stdin = io::stdin();
 
-    let hi = args.only_highlight;
+    let colors = {
+        let mut colors = Vec::new();
+        if !args.only_highlight {
+            for c in FOREGROUND_COLORS {
+                colors.push((c, RESET_FOREGROUND));
+            }
+        }
+        if !args.no_highlight {
+            for c in BACKGROUND_COLORS {
+                colors.push((c, RESET_BACKGROUND));
+            }
+        }
+        colors
+    };
 
     for line in stdin.lock().lines() {
         let line = line.unwrap();
-        let rep = format!(
-            "{}$0{}",
-            if hi {
-                BACKGROUND_COLORS[0]
-            } else {
-                FOREGROUND_COLORS[0]
-            },
-            if hi {
-                RESET_BACKGROUND
-            } else {
-                RESET_FOREGROUND
-            },
-        );
+        let rep = format!("{}$0{}", colors[0].0, colors[0].1);
         let out = re.replace_all(&line, rep);
         println!("{out}");
     }
