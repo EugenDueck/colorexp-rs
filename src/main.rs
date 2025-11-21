@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::{ArgAction, ArgGroup, Parser};
 use regex::RegexBuilder;
 use std::io;
@@ -22,6 +23,10 @@ struct Args {
     /// Show help
     #[arg(long = "help", action = ArgAction::Help)]
     help: Option<bool>,
+
+    /// More verbose output on errors
+    #[arg(long)]
+    debug: bool,
 
     /// Do not color by changing the background color
     #[arg(short = 'h', long)]
@@ -68,22 +73,41 @@ const RESET_BACKGROUND: &str = "\x1b[49m";
 fn main() {
     let args = Args::parse();
 
-    if args.patterns.len() > 1 {
-        eprintln!("Only one pattern supported for now. Sorry!");
-        exit(2);
+    if args.debug {
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "full");
+        }
     }
-    let regexps = {
-        let mut r = args.patterns.clone();
-        // reverse order, so that the last given regex that matches takes precedence
-        r.reverse();
-        r
-    };
 
-    let pattern = regexps.first().unwrap();
-    let re = RegexBuilder::new(pattern)
-        .case_insensitive(args.ignore_case)
-        .build()
-        .unwrap();
+    if let Err(err) = run(&args) {
+        if args.debug {
+            eprintln!("{err:?}");
+        } else {
+            eprintln!("{err}");
+
+            let mut source = err.source();
+            while let Some(cause) = source {
+                eprintln!("  Caused by: {cause}");
+                source = cause.source();
+            }
+        }
+
+        exit(1);
+    }
+}
+
+fn run(args: &Args) -> Result<()> {
+    let regexps = args
+        .patterns
+        .iter()
+        // reverse order, so that the last given regex that matches takes precedence
+        .rev()
+        .map(|p| {
+            RegexBuilder::new(p)
+                .case_insensitive(args.ignore_case)
+                .build()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let stdin = io::stdin();
 
     let colors = {
@@ -104,7 +128,8 @@ fn main() {
     for line in stdin.lock().lines() {
         let line = line.unwrap();
         let rep = format!("{}$0{}", colors[0].0, colors[0].1);
-        let out = re.replace_all(&line, rep);
+        let out = regexps[0].replace_all(&line, rep);
         println!("{out}");
     }
+    Ok(())
 }
