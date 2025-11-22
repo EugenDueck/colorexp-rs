@@ -48,3 +48,14 @@ Options:
     - in case of a single pattern, the `-g` option can be used to enforce use of a single color
 
 ![Example](example-group-same-color.png)
+
+# Installation
+
+## Homebrew on macOS (arm64)
+```sh
+brew tap EugenDueck/tap https://github.com/EugenDueck/homebrew-tap
+brew install colorexp
+```
+
+## Linux (amd64), Windows (amd64), macOS (arm64)
+- Download a Release from https://github.com/EugenDueck/colorexp-rs/releases
