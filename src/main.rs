@@ -70,6 +70,65 @@ static BACKGROUND_COLORS: &[&str] = &[
 const RESET_FOREGROUND: &str = "\x1b[0m";
 const RESET_BACKGROUND: &str = "\x1b[49m";
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+struct RangeWithId {
+    start_idx: usize,
+    end_idx: usize,
+    id: usize,
+}
+
+/// add_range adds a new range to the ordered list of non-overlapping ranges.
+/// It ensures that the list stays ordered and any existing ranges are subtracted
+/// from the new range, potentially splitting it into multiple pieces.
+fn add_range(ranges: &mut Vec<RangeWithId>, mut new_range: RangeWithId) {
+    let mut inserted = false;
+
+    let mut i = 0;
+    while i < ranges.len() {
+        let existing_range = *unsafe { ranges.get_unchecked(i) };
+
+        if new_range.end_idx <= existing_range.start_idx {
+            // The new range is entirely before the existing range.
+            if !inserted {
+                ranges.insert(i, new_range);
+                i += 1;
+                inserted = true;
+            }
+        } else if new_range.start_idx >= existing_range.end_idx {
+            // The new range is entirely after the existing range.
+        } else {
+            // There is an overlap; we may need to split the new range.
+            if !inserted && new_range.start_idx < existing_range.start_idx {
+                // Add the non-overlapping piece before the existing range.
+                ranges.insert(
+                    i,
+                    RangeWithId {
+                        start_idx: new_range.start_idx,
+                        end_idx: existing_range.start_idx,
+                        id: new_range.id,
+                    },
+                );
+                i += 1;
+            }
+            if new_range.end_idx > existing_range.end_idx {
+                // Update the new range to start from the end of the existing range.
+                new_range.start_idx = existing_range.end_idx;
+            } else {
+                // The new range is fully covered by the existing range; nothing left to add.
+                inserted = true;
+                new_range.start_idx = new_range.end_idx;
+            }
+        }
+        i += 1;
+    }
+
+    // If the new range was not inserted because it is after all existing ranges,
+    // or if it still has a remaining piece after processing overlaps, add it now.
+    if !inserted {
+        ranges.push(new_range);
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -132,4 +191,79 @@ fn run(args: &Args) -> Result<()> {
         println!("{out}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    fn r(start_idx: usize, end_idx: usize, id: usize) -> RangeWithId {
+        RangeWithId {
+            start_idx,
+            end_idx,
+            id,
+        }
+    }
+
+    #[rstest]
+    #[case::before_1(
+        vec![r(5, 8, 1)],
+        r(3, 5, 2),
+        vec![r(3, 5, 2), r(5, 8, 1)],
+    )]
+    #[case::before_2(
+        vec![r(5, 8, 1)],
+        r(3, 4, 2),
+        vec![r(3, 4, 2), r(5, 8, 1)],
+    )]
+    #[case::after_1(
+        vec![r(1, 3, 0)],
+        r(3, 5, 2),
+        vec![r(1, 3, 0), r(3, 5, 2)],
+    )]
+    #[case::after_2(
+        vec![r(1, 3, 0)],
+        r(4, 5, 2),
+        vec![r(1, 3, 0), r(4, 5, 2)],
+    )]
+    #[case::in_between_1(
+        vec![r(1, 3, 0), r(5, 8, 1)],
+        r(3, 5, 2),
+        vec![r(1, 3, 0), r(3, 5, 2), r(5, 8, 1)],
+    )]
+    #[case::in_between_2(
+        vec![r(1, 3, 0), r(5, 8, 1)],
+        r(3, 4, 2),
+        vec![r(1, 3, 0), r(3, 4, 2), r(5, 8, 1)],
+    )]
+    #[case::in_between_3(
+        vec![r(1, 3, 0), r(5, 8, 1)],
+        r(4, 5, 2),
+        vec![r(1, 3, 0), r(4, 5, 2), r(5, 8, 1)],
+    )]
+    #[case::partial_overlap(
+        vec![r(1, 3, 0), r(5, 8, 1)],
+        r(2, 6, 2),
+        vec![r(1, 3, 0), r(3, 5, 2), r(5, 8, 1)],
+    )]
+    #[case::full_overlap(
+        vec![r(1, 3, 0), r(5, 8, 1)],
+        r(6, 7, 2),
+        vec![r(1, 3, 0), r(5, 8, 1)],
+    )]
+    #[case::overlap_and_extend(
+        vec![r(1, 5, 0), r(10, 15, 1)],
+        r(3, 12, 2),
+        vec![r(1, 5, 0), r(5, 10, 2), r(10, 15, 1)],
+    )]
+    fn test_add_range(
+        #[case] existing: Vec<RangeWithId>,
+        #[case] new_range: RangeWithId,
+        #[case] expected: Vec<RangeWithId>,
+    ) {
+        let mut actual = existing.clone();
+        add_range(&mut actual, new_range);
+        assert_eq!(actual, expected);
+    }
 }
