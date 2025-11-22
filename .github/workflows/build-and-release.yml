@@ -113,6 +113,10 @@ jobs:
     needs:
       - build-linux-windows
       - build-darwin-arm64
+    outputs:
+      tag_name: v${{ steps.project_info.outputs.version }}
+      version: ${{ steps.project_info.outputs.version }}
+      version_and_hash: ${{ steps.project_info.outputs.version_and_hash }}
 
     steps:
       - uses: actions/checkout@v4
@@ -166,14 +170,15 @@ jobs:
       - name: Checkout colorexp repository at released tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.release.outputs.tag_name }}
 
       - name: Extract project version and commit hash
         id: project_info
         run: |
-          version=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f 2)
+          version="${{ needs.release.outputs.version }}"
+          version_and_hash="${{ needs.release.outputs.version_and_hash }}"
           echo "version=$version" >> $GITHUB_OUTPUT
-          echo "filename=colorexp-darwin-arm64-${version}-$(git rev-parse --short HEAD).tar.gz" >> $GITHUB_OUTPUT
+          echo "filename=colorexp-darwin-arm64-${version_and_hash}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: Checkout homebrew-tap repository
         uses: actions/checkout@v4
@@ -184,7 +189,7 @@ jobs:
 
       - name: Update Formula with dynamic filename
         run: |
-          url="https://github.com/EugenDueck/colorexp-rs/releases/download/${{ github.event.release.tag_name }}/${{ steps.project_info.outputs.filename }}"
+          url="https://github.com/EugenDueck/colorexp-rs/releases/download/${{ needs.release.outputs.tag_name }}/${{ steps.project_info.outputs.filename }}"
           sha256=$(curl -L $url | sha256sum | cut -d ' ' -f1)
           sed -i "s|url .*|url \"$url\"|" homebrew-tap/Formula/colorexp.rb
           sed -i "s|sha256 .*|sha256 \"$sha256\"|" homebrew-tap/Formula/colorexp.rb
@@ -197,5 +202,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add Formula/colorexp.rb
-          git commit -m "Update colorexp formula to version ${{ github.event.release.tag_name }}"
+          git commit -m "Update colorexp formula to version ${{ needs.release.outputs.tag_name }}"
           git push
