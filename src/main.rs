@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{ArgAction, ArgGroup, Parser};
-use regex::RegexBuilder;
+use regex::{Regex, RegexBuilder};
+use std::cmp::min;
 use std::io;
 use std::io::BufRead;
 use std::process::exit;
@@ -17,6 +18,11 @@ use std::process::exit;
             .args(&["no_highlight", "only_highlight"])
             .multiple(false)
     ),
+    group(
+        ArgGroup::new("vary_group_colors")
+            .args(&["vary_group_colors_off", "vary_group_colors_on"])
+            .multiple(false)
+    ),
 )]
 struct Args {
     // using custom help arg to be able to turn off -h, which is used by the no_highlight arg
@@ -28,6 +34,14 @@ struct Args {
     #[arg(long)]
     debug: bool,
 
+    /// Highlight the entire match, even if pattern contains capturing groups
+    #[arg(short, long)]
+    full_match_highlight: bool,
+
+    /// Perform case-insensitive matching
+    #[arg(short, long)]
+    ignore_case: bool,
+
     /// Do not color by changing the background color
     #[arg(short = 'h', long)]
     no_highlight: bool,
@@ -36,13 +50,17 @@ struct Args {
     #[arg(short = 'H', long)]
     only_highlight: bool,
 
-    /// Perform case-insensitive matching
-    #[arg(short, long)]
-    ignore_case: bool,
-
     /// Patterns
     #[arg(required = true, num_args = 1..)]
     patterns: Vec<String>,
+
+    /// Turn off changing of colors for every capturing group. Defaults to on if exactly one pattern is given.
+    #[arg(short = 'g', long)]
+    vary_group_colors_off: bool,
+
+    /// Turn on changing of colors for every capturing group. Defaults to on if exactly one pattern is given.
+    #[arg(short = 'G', long)]
+    vary_group_colors_on: bool,
 }
 
 static FOREGROUND_COLORS: &[&str] = &[
@@ -129,6 +147,57 @@ fn add_range(ranges: &mut Vec<RangeWithId>, mut new_range: RangeWithId) {
     }
 }
 
+fn match_line(
+    line: &str,
+    regexps: &Vec<Regex>,
+    vary_group_colors: bool,
+    full_match_highlight: bool,
+) -> Vec<RangeWithId> {
+    let mut ranges = Vec::default();
+    let mut color_idx = 0;
+    for re in regexps {
+        let num_groups = re.captures_len() - 1; // subtract implicit group
+        let first_group_to_colorize = if full_match_highlight {
+            0
+        } else {
+            min(1, num_groups)
+        };
+        let groups_to_colorize = if full_match_highlight {
+            1
+        } else {
+            num_groups + 1 - first_group_to_colorize
+        };
+        for match_ in re.captures_iter(line) {
+            // if there is no capturing group, the full match will be colorized (group 0)
+            // if there are capturing groups, all groups but group 0 (the full match) will be colorized, unless
+            // full_match_highlight == true
+            for i in 0..groups_to_colorize {
+                let mut cur_color_idx = color_idx;
+                if vary_group_colors {
+                    cur_color_idx += groups_to_colorize - 1 - i;
+                }
+                let g_idx = i + first_group_to_colorize;
+                if let Some(g) = match_.get(g_idx) {
+                    add_range(
+                        &mut ranges,
+                        RangeWithId {
+                            start_idx: g.start(),
+                            end_idx: g.end(),
+                            id: cur_color_idx,
+                        },
+                    );
+                }
+            }
+        }
+        if vary_group_colors {
+            color_idx += groups_to_colorize;
+        } else {
+            color_idx += 1;
+        }
+    }
+    ranges
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -156,6 +225,16 @@ fn main() {
 }
 
 fn run(args: &Args) -> Result<()> {
+    let vary_group_colors = {
+        if args.vary_group_colors_on {
+            true
+        } else if args.vary_group_colors_off {
+            false
+        } else {
+            args.patterns.len() == 1
+        }
+    };
+
     let regexps = args
         .patterns
         .iter()
@@ -186,6 +265,12 @@ fn run(args: &Args) -> Result<()> {
 
     for line in stdin.lock().lines() {
         let line = line?;
+        let _ranges = match_line(
+            &line,
+            &regexps,
+            vary_group_colors,
+            args.full_match_highlight,
+        );
         let rep = format!("{}$0{}", colors[0].0, colors[0].1);
         let out = regexps[0].replace_all(&line, rep);
         println!("{out}");
@@ -265,5 +350,31 @@ mod tests {
         let mut actual = existing.clone();
         add_range(&mut actual, new_range);
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_match_line() {
+        let regexps = vec![
+            RegexBuilder::new("t")
+                .case_insensitive(false)
+                .build()
+                .unwrap(),
+        ];
+        let ranges = match_line("test", &regexps, false, false);
+        assert_eq!(
+            ranges,
+            vec![
+                RangeWithId {
+                    start_idx: 0,
+                    end_idx: 1,
+                    id: 0
+                },
+                RangeWithId {
+                    start_idx: 3,
+                    end_idx: 4,
+                    id: 0
+                },
+            ]
+        );
     }
 }
