@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{ArgAction, ArgGroup, Parser};
-use regex::{Regex, RegexBuilder};
+use regex::{Regex, RegexBuilder, escape};
 use std::cmp::{max, min};
 use std::io;
 use std::io::BufRead;
@@ -33,6 +33,10 @@ struct Args {
     /// More verbose output on errors
     #[arg(long)]
     debug: bool,
+
+    /// Interpret PATTERNS as fixed strings, not regular expressions
+    #[arg(short = 'F', long)]
+    fixed_strings: bool,
 
     /// Highlight the entire match, even if pattern contains capturing groups
     #[arg(short, long)]
@@ -287,7 +291,12 @@ fn run(args: &Args) -> Result<()> {
         // reverse order, so that the last given regex that matches takes precedence
         .rev()
         .map(|p| {
-            RegexBuilder::new(p)
+            let pat: std::borrow::Cow<'_, str> = if args.fixed_strings {
+                escape(p).into()
+            } else {
+                p.as_str().into()
+            };
+            RegexBuilder::new(&pat)
                 .case_insensitive(args.ignore_case)
                 .build()
         })
