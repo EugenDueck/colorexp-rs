@@ -185,7 +185,7 @@ fn run(args: &Args) -> Result<()> {
     };
 
     for line in stdin.lock().lines() {
-        let line = line.unwrap();
+        let line = line?;
         let rep = format!("{}$0{}", colors[0].0, colors[0].1);
         let out = regexps[0].replace_all(&line, rep);
         println!("{out}");
