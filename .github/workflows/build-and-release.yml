@@ -1,0 +1,122 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out
+      - uses: actions/checkout@v4
+
+      # Extract version information from Cargo.toml
+      - name: Extract project version and hash
+        id: project_info
+        run: |
+          version=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f 2)
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "version_and_hash=${version}-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      # Set up Rust toolchain + cross
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: |
+            x86_64-unknown-linux-gnu
+            x86_64-apple-darwin
+            x86_64-pc-windows-gnu
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      # (Optional) Fetch dependencies explicitly
+      - name: Fetch dependencies
+        run: cargo fetch
+
+      # Run tests
+      - name: Run tests
+        run: cross test --release --target x86_64-unknown-linux-gnu
+
+      # Build Linux
+      - name: Build Linux
+        run: |
+          cross build --release --target x86_64-unknown-linux-gnu
+          cp target/x86_64-unknown-linux-gnu/release/colorexp colorexp
+          tar -czvf colorexp-linux-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz colorexp
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: colorexp-linux-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+          path: colorexp-linux-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+
+      # Build Darwin
+      - name: Build Darwin
+        run: |
+          cross build --release --target x86_64-apple-darwin
+          cp target/x86_64-apple-darwin/release/colorexp colorexp
+          chmod a+x colorexp
+          tar -czvf colorexp-darwin-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz colorexp
+      - name: Upload Darwin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: colorexp-darwin-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+          path: colorexp-darwin-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+
+      # Build Windows
+      - name: Build Windows
+        run: |
+          cross build --release --target x86_64-pc-windows-gnu
+          cp target/x86_64-pc-windows-gnu/release/colorexp.exe colorexp.exe
+          zip colorexp-windows-amd64-${{ steps.project_info.outputs.version_and_hash }}.zip colorexp.exe
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: colorexp-windows-amd64-${{ steps.project_info.outputs.version_and_hash }}.zip
+          path: colorexp-windows-amd64-${{ steps.project_info.outputs.version_and_hash }}.zip
+
+      # Create a GitHub release
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.CONTENTS_PAT }}
+        with:
+          tag_name: v${{ steps.project_info.outputs.version }}
+          release_name: Release ${{ steps.project_info.outputs.version }}
+          draft: false
+          prerelease: false
+
+      # Upload release asset for Linux
+      - name: Upload Release Asset Linux
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./colorexp-linux-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+          asset_name: colorexp-linux-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+          asset_content_type: application/octet-stream
+
+      # Upload release asset for Darwin
+      - name: Upload Release Asset Darwin
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./colorexp-darwin-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+          asset_name: colorexp-darwin-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
+          asset_content_type: application/octet-stream
+
+      # Upload release asset for Windows
+      - name: Upload Release Asset Windows
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./colorexp-windows-amd64-${{ steps.project_info.outputs.version_and_hash }}.zip
+          asset_name: colorexp-windows-amd64-${{ steps.project_info.outputs.version_and_hash }}.zip
+          asset_content_type: application/octet-stream
