@@ -184,7 +184,7 @@ jobs:
 
       - name: Update Formula with dynamic filename
         run: |
-          url="https://github.com/EugenDueck/colorexp/releases/download/${{ github.event.release.tag_name }}/${{ steps.project_info.outputs.filename }}"
+          url="https://github.com/EugenDueck/colorexp-rs/releases/download/${{ github.event.release.tag_name }}/${{ steps.project_info.outputs.filename }}"
           sha256=$(curl -L $url | sha256sum | cut -d ' ' -f1)
           sed -i "s|url .*|url \"$url\"|" homebrew-tap/Formula/colorexp.rb
           sed -i "s|sha256 .*|sha256 \"$sha256\"|" homebrew-tap/Formula/colorexp.rb
