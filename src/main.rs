@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{ArgAction, ArgGroup, Parser};
 use regex::{Regex, RegexBuilder};
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::io;
 use std::io::BufRead;
 use std::process::exit;
@@ -198,6 +198,48 @@ fn match_line(
     ranges
 }
 
+struct ColorSet {
+    on: &'static str,
+    off: &'static str,
+}
+
+impl ColorSet {
+    pub fn new(on: &'static str, off: &'static str) -> Self {
+        Self { on, off }
+    }
+}
+
+fn colorize(
+    s: &mut String,
+    colors: &[ColorSet],
+    ranges: &mut [RangeWithId],
+    pattern_color_count: usize,
+) {
+    let ranges_len = ranges.len();
+    for i in 0..ranges_len {
+        let r = unsafe { ranges.get_unchecked(i) };
+        let mut color_idx = (pattern_color_count - r.id) as i32 - 1; // The quick ...
+        while color_idx < 0 {
+            color_idx += colors.len() as i32;
+        }
+        let color_idx = color_idx as usize;
+        let color = &colors[color_idx % colors.len()];
+        s.insert_str(r.start_idx, color.on);
+        inc_ranges(ranges, color.on.len());
+        s.insert_str(unsafe { ranges.get_unchecked(i) }.end_idx, color.off);
+        inc_ranges(ranges, color.off.len());
+    }
+}
+
+fn inc_ranges(ranges: &mut [RangeWithId], inc: usize) {
+    let ranges_len = ranges.len();
+    for i in 0..ranges_len {
+        let r = unsafe { ranges.get_unchecked_mut(i) };
+        r.start_idx += inc;
+        r.end_idx += inc;
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -246,34 +288,40 @@ fn run(args: &Args) -> Result<()> {
                 .build()
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let stdin = io::stdin();
 
     let colors = {
         let mut colors = Vec::new();
         if !args.only_highlight {
             for c in FOREGROUND_COLORS {
-                colors.push((c, RESET_FOREGROUND));
+                colors.push(ColorSet::new(c, RESET_FOREGROUND));
             }
         }
         if !args.no_highlight {
             for c in BACKGROUND_COLORS {
-                colors.push((c, RESET_BACKGROUND));
+                colors.push(ColorSet::new(c, RESET_BACKGROUND));
             }
         }
         colors
     };
 
+    let mut pattern_color_count = regexps.len();
+    if vary_group_colors {
+        for re in &regexps {
+            pattern_color_count += max(0, re.captures_len() as i32 - 2) as usize;
+        }
+    }
+
+    let stdin = io::stdin();
     for line in stdin.lock().lines() {
-        let line = line?;
-        let _ranges = match_line(
+        let mut line = line?;
+        let mut ranges = match_line(
             &line,
             &regexps,
             vary_group_colors,
             args.full_match_highlight,
         );
-        let rep = format!("{}$0{}", colors[0].0, colors[0].1);
-        let out = regexps[0].replace_all(&line, rep);
-        println!("{out}");
+        colorize(&mut line, &colors, &mut ranges, pattern_color_count);
+        println!("{line}");
     }
     Ok(())
 }
