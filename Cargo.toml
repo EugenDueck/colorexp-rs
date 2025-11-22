@@ -8,3 +8,10 @@ anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
 regex = "1.12.2"
 rstest = "0.26.1"
+
+[profile.release]
+opt-level = "z"      # optimize for size ("s" or "z")
+lto = true           # link-time optimization
+codegen-units = 1    # better optimization, slower compile
+panic = "abort"      # removes unwind tables
+strip = "symbols"    # nightly: strips symbols during build
