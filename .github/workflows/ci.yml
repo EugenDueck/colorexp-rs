@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+
+jobs:
+  rust-ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the code
+      - uses: actions/checkout@v4
+
+      # Install stable Rust
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      # Cache cargo dirs for speed
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # Ensure formatting
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      # Lint with Clippy (deny warnings)
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # Run tests
+      - name: cargo test
+        run: cargo test --all-features --all-targets
