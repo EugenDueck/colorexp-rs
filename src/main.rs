@@ -30,10 +30,6 @@ struct Args {
     #[arg(long = "help", action = ArgAction::Help)]
     help: Option<bool>,
 
-    /// More verbose output on errors
-    #[arg(long)]
-    debug: bool,
-
     /// Interpret PATTERNS as fixed strings, not regular expressions
     #[arg(short = 'F', long)]
     fixed_strings: bool,
@@ -251,25 +247,12 @@ fn inc_ranges(ranges: &mut [RangeWithId], inc: usize) {
 fn main() {
     let args = Args::parse();
 
-    if args.debug {
-        unsafe {
-            std::env::set_var("RUST_BACKTRACE", "full");
-        }
-    }
-
     if let Err(err) = run(&args) {
-        if args.debug {
-            eprintln!("{err:?}");
-        } else {
-            eprintln!("{err}");
-
-            let mut source = err.source();
-            while let Some(cause) = source {
-                eprintln!("  Caused by: {cause}");
-                source = cause.source();
-            }
+        let mut source = err.source();
+        while let Some(cause) = source {
+            eprintln!("  Caused by: {cause}");
+            source = cause.source();
         }
-
         exit(1);
     }
 }
