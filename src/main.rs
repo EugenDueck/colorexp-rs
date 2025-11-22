@@ -50,15 +50,19 @@ struct Args {
     #[arg(short = 'H', long)]
     only_highlight: bool,
 
+    /// Only print lines with matches (suppress lines without matches)
+    #[arg(short, long)]
+    only_matching_lines: bool,
+
     /// Patterns
     #[arg(required = true, num_args = 1..)]
     patterns: Vec<String>,
 
-    /// Turn off changing of colors for every capturing group. Defaults to on if exactly one pattern is given.
+    /// Turn off changing of colors for every capturing group. Defaults to on if exactly one pattern is given
     #[arg(short = 'g', long)]
     vary_group_colors_off: bool,
 
-    /// Turn on changing of colors for every capturing group. Defaults to on if exactly one pattern is given.
+    /// Turn on changing of colors for every capturing group. Defaults to on if exactly one pattern is given
     #[arg(short = 'G', long)]
     vary_group_colors_on: bool,
 }
@@ -320,7 +324,13 @@ fn run(args: &Args) -> Result<()> {
             vary_group_colors,
             args.full_match_highlight,
         );
-        colorize(&mut line, &colors, &mut ranges, pattern_color_count);
+        if ranges.is_empty() {
+            if args.only_matching_lines {
+                continue;
+            }
+        } else {
+            colorize(&mut line, &colors, &mut ranges, pattern_color_count);
+        }
         println!("{line}");
     }
     Ok(())
