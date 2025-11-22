@@ -145,20 +145,12 @@ jobs:
           path: .
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.project_info.outputs.version }}
           name: Release ${{ steps.project_info.outputs.version }}
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.project_info.outputs.version }}
           files: |
             colorexp-linux-amd64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
             colorexp-darwin-arm64-${{ steps.project_info.outputs.version_and_hash }}.tar.gz
